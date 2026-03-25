@@ -1262,7 +1262,11 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
               let scalar = chars.unicodeScalars.first else {
             return nil
         }
-        if event.modifierFlags.contains(.numericPad) {
+        // macOS sets .numericPad on regular arrow keys; exclude them
+        // by checking that the keyCode is not a standard arrow key.
+        let regularNavKeyCodes: Set<Int> = [kVK_LeftArrow, kVK_RightArrow, kVK_UpArrow, kVK_DownArrow,
+                                            kVK_Home, kVK_End, kVK_PageUp, kVK_PageDown, kVK_ForwardDelete]
+        if event.modifierFlags.contains(.numericPad) && !regularNavKeyCodes.contains(Int(event.keyCode)) {
             switch Int(scalar.value) {
             case NSUpArrowFunctionKey:
                 return .keypadUp
