@@ -1305,10 +1305,6 @@ open class Terminal {
                 }
 
                 // Fallback for Regional Indicator combining when lastBufferStorage is stale.
-                // tmux partial screen updates can interleave output from multiple lines,
-                // causing lastBufferStorage to point to a different line by the time the
-                // second RI of a flag pair arrives. Check the cell at buffer.x - 2 on the
-                // current line as a fallback (a preceding width-2 standalone RI).
                 if !shouldTryCombine, UnicodeUtil.isRegionalIndicator(firstScalar) {
                     let prevX = buffer.x - 2
                     if prevX >= 0 {
@@ -1325,6 +1321,15 @@ open class Terminal {
                             }
                         }
                     }
+                }
+
+                // DEBUG: Log all RI symbol processing to diagnose flag combining
+                if UnicodeUtil.isRegionalIndicator(firstScalar) {
+                    let scalarsHex = ch.unicodeScalars.map { String(format: "U+%04X", $0.value) }.joined(separator: " ")
+                    let last = buffer.lastBufferStorage
+                    let lastDesc = "lastBuf=(y:\(last.y) x:\(last.x) cols:\(last.cols) rows:\(last.rows))"
+                    let curDesc = "cur=(y:\(buffer.y) x:\(buffer.x) yBase:\(buffer.yBase))"
+                    print("[RI-DEBUG] ch=\(scalarsHex) chWidth=\(chWidth) combine=\(shouldTryCombine) \(lastDesc) \(curDesc) termCols=\(cols) termRows=\(rows)")
                 }
 
                 if shouldTryCombine {
@@ -1375,8 +1380,19 @@ open class Terminal {
                                 }
                                 existingLine [lastx] = cd
                                 updateRange(borrowing: buffer, last.y)
+                                // DEBUG: Log successful combining for RI
+                                if UnicodeUtil.isRegionalIndicator(firstScalar) {
+                                    let combinedScalars = newCh.unicodeScalars.map { String(format: "U+%04X", $0.value) }.joined(separator: " ")
+                                    print("[RI-DEBUG] COMBINED at (\(last.y),\(lastx)) -> \(combinedScalars)")
+                                }
                                 continue
                             }
+                        }
+                        // DEBUG: Log failed combining for RI
+                        if UnicodeUtil.isRegionalIndicator(firstScalar) {
+                            let cdChar = getCharacter(for: cd)
+                            let cdScalars = cdChar.unicodeScalars.map { String(format: "U+%04X", $0.value) }.joined(separator: " ")
+                            print("[RI-DEBUG] COMBINE FAILED: lastBuf char=\(cdScalars) newStr.count=\(newStr.count)")
                         }
                     }
                 }
