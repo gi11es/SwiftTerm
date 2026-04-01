@@ -647,6 +647,12 @@ extension TerminalView {
 
             let character = ch.code == 0 ? " " : terminal.getCharacter(for: ch)
 
+            // DEBUG: Log RI cells during rendering
+            if character.unicodeScalars.first.map({ UnicodeUtil.isRegionalIndicator($0) }) == true {
+                let scalars = character.unicodeScalars.map { String(format: "U+%04X", $0.value) }.joined(separator: " ")
+                print("[RI-RENDER] row=\(row) col=\(col) width=\(width) code=\(ch.code) scalars=\(scalars) scalarCount=\(character.unicodeScalars.count)")
+            }
+
             // Renders box drawing characters independently of the font
             // U+2500...U+257F
             if customBlockGlyphs,
