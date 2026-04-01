@@ -367,8 +367,12 @@ struct UnicodeUtil {
             return 0
         }
 
+        // Regional Indicators are width 1 individually. A pair of RIs combines
+        // into a flag emoji (width 2) via the combining logic in handlePrint.
+        // tmux and most terminal multiplexers treat unpaired RIs as width 1,
+        // so we must match to avoid cursor position divergence.
         if isRegionalIndicator(rune) {
-            return 2
+            return 1
         }
 
         if isEastAsianWide(irune) {

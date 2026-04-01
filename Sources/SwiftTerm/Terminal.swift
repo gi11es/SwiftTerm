@@ -1305,13 +1305,14 @@ open class Terminal {
                 }
 
                 // Fallback for Regional Indicator combining when lastBufferStorage is stale.
+                // Individual RIs are width 1, so the previous RI is at buffer.x - 1.
                 if !shouldTryCombine, UnicodeUtil.isRegionalIndicator(firstScalar) {
-                    let prevX = buffer.x - 2
+                    let prevX = buffer.x - 1
                     if prevX >= 0 {
                         let currentY = buffer.y + buffer.yBase
                         let currentLine = buffer.lines [currentY]
                         let prevCell = currentLine [prevX]
-                        if prevCell.width == 2 {
+                        if prevCell.width == 1 {
                             let prevChar = getCharacter(for: prevCell)
                             if prevChar.unicodeScalars.count == 1,
                                let prevScalar = prevChar.unicodeScalars.first,
@@ -1372,6 +1373,13 @@ open class Terminal {
                                     if oldSize == 2 && buffer.x > 0 {
                                         buffer.x -= 1
                                     }
+                                } else if UnicodeUtil.isRegionalIndicator(firstScalar) && oldSize == 1 && lastx + 1 < cols {
+                                    // Two width-1 RIs combine into a width-2 flag emoji.
+                                    // Create a padding cell for the second column.
+                                    updateCharData(&cd, char: newCh, size: 2)
+                                    let empty = makeCharData(attribute: cd.attribute, code: 0, size: 0)
+                                    existingLine [lastx + 1] = empty
+                                    buffer.x += 1
                                 } else {
                                     updateCharData(&cd, char: newCh, size: Int32 (cd.width))
                                     if cd.width != oldSize {
