@@ -1294,8 +1294,11 @@ open class Terminal {
                         if lastChar.unicodeScalars.last?.value == 0x200D {
                             shouldTryCombine = true
                         }
-                        // Regional indicator combining: pair two RIs into a flag emoji
+                        // Regional indicator combining: pair two RIs into a flag emoji.
+                        // Require adjacency (buffer.x == last.x + 1) to prevent wrong
+                        // pairing when tmux overwrites a cell during partial repaints.
                         else if UnicodeUtil.isRegionalIndicator(firstScalar),
+                                buffer.x == last.x + 1,
                                 lastChar.unicodeScalars.count == 1,
                                 let lastScalar = lastChar.unicodeScalars.first,
                                 UnicodeUtil.isRegionalIndicator(lastScalar) {
