@@ -1327,15 +1327,6 @@ open class Terminal {
                     }
                 }
 
-                // DEBUG: Log all RI symbol processing to diagnose flag combining
-                if UnicodeUtil.isRegionalIndicator(firstScalar) {
-                    let scalarsHex = ch.unicodeScalars.map { String(format: "U+%04X", $0.value) }.joined(separator: " ")
-                    let last = buffer.lastBufferStorage
-                    let lastDesc = "lastBuf=(y:\(last.y) x:\(last.x) cols:\(last.cols) rows:\(last.rows))"
-                    let curDesc = "cur=(y:\(buffer.y) x:\(buffer.x) yBase:\(buffer.yBase))"
-                    print("[RI-DEBUG] ch=\(scalarsHex) chWidth=\(chWidth) combine=\(shouldTryCombine) \(lastDesc) \(curDesc) termCols=\(cols) termRows=\(rows)")
-                }
-
                 if shouldTryCombine {
                     // Determine if the last time we poked at a character is still valid
                     let last = buffer.lastBufferStorage
@@ -1391,19 +1382,8 @@ open class Terminal {
                                 }
                                 existingLine [lastx] = cd
                                 updateRange(borrowing: buffer, last.y)
-                                // DEBUG: Log successful combining for RI
-                                if UnicodeUtil.isRegionalIndicator(firstScalar) {
-                                    let combinedScalars = newCh.unicodeScalars.map { String(format: "U+%04X", $0.value) }.joined(separator: " ")
-                                    print("[RI-DEBUG] COMBINED at (\(last.y),\(lastx)) -> \(combinedScalars)")
-                                }
                                 continue
                             }
-                        }
-                        // DEBUG: Log failed combining for RI
-                        if UnicodeUtil.isRegionalIndicator(firstScalar) {
-                            let cdChar = getCharacter(for: cd)
-                            let cdScalars = cdChar.unicodeScalars.map { String(format: "U+%04X", $0.value) }.joined(separator: " ")
-                            print("[RI-DEBUG] COMBINE FAILED: lastBuf char=\(cdScalars) newStr.count=\(newStr.count)")
                         }
                     }
                 }
