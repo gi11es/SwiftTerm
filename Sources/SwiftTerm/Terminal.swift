@@ -1304,6 +1304,29 @@ open class Terminal {
                     }
                 }
 
+                // Fallback for Regional Indicator combining when lastBufferStorage is stale.
+                // tmux partial screen updates can interleave output from multiple lines,
+                // causing lastBufferStorage to point to a different line by the time the
+                // second RI of a flag pair arrives. Check the cell at buffer.x - 2 on the
+                // current line as a fallback (a preceding width-2 standalone RI).
+                if !shouldTryCombine, UnicodeUtil.isRegionalIndicator(firstScalar) {
+                    let prevX = buffer.x - 2
+                    if prevX >= 0 {
+                        let currentY = buffer.y + buffer.yBase
+                        let currentLine = buffer.lines [currentY]
+                        let prevCell = currentLine [prevX]
+                        if prevCell.width == 2 {
+                            let prevChar = getCharacter(for: prevCell)
+                            if prevChar.unicodeScalars.count == 1,
+                               let prevScalar = prevChar.unicodeScalars.first,
+                               UnicodeUtil.isRegionalIndicator(prevScalar) {
+                                buffer.lastBufferStorage = (currentY, prevX, cols, rows)
+                                shouldTryCombine = true
+                            }
+                        }
+                    }
+                }
+
                 if shouldTryCombine {
                     // Determine if the last time we poked at a character is still valid
                     let last = buffer.lastBufferStorage
