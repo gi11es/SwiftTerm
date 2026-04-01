@@ -457,20 +457,93 @@ final class SwiftTermUnicode {
         let t = h.terminal!
 
         // Three RIs: U+1F1FA + U+1F1F8 + U+1F1EC + 'x'
-        // Should produce: 🇺🇸 (flag) + 🇬 (unpaired RI) + x
+        // Should produce: 🇺🇸 (flag, width 2) + 🇬 (unpaired RI, width 1) + x
         t.feed(text: "\u{1F1FA}\u{1F1F8}\u{1F1EC}x")
 
         // First two RIs combine into US flag at col 0
         #expect(t.getCharacter(col: 0, row: 0) == "🇺🇸")
         #expect(t.getCharData(col: 0, row: 0)?.width == 2)
 
-        // Third RI is unpaired at col 2, width 2
+        // Third RI is unpaired at col 2, width 1 (matches wcwidth)
         let thirdChar = t.getCharacter(col: 2, row: 0)
         #expect(thirdChar == "\u{1F1EC}")
-        #expect(t.getCharData(col: 2, row: 0)?.width == 2)
+        #expect(t.getCharData(col: 2, row: 0)?.width == 1)
 
-        // 'x' at col 4
-        #expect(t.getCharacter(col: 4, row: 0) == "x")
+        // 'x' at col 3 (flag=2 + unpaired RI=1)
+        #expect(t.getCharacter(col: 3, row: 0) == "x")
+    }
+
+    /// Individual RI symbols have columnWidth 1, matching wcwidth() on all platforms.
+    @Test func testRegionalIndicatorWidth() {
+        let ri = UnicodeScalar(0x1F1EB)!  // Regional Indicator F
+        #expect(UnicodeUtil.columnWidth(rune: ri) == 1)
+    }
+
+    /// Combined flag emoji occupies 2 columns despite individual RIs being width 1.
+    @Test func testFlagEmojiCombinedWidth() {
+        let h = HeadlessTerminal(queue: SwiftTermTests.queue) { _ in }
+        let t = h.terminal!
+
+        // 🇫🇷 = F + R
+        t.feed(text: "\u{1F1EB}\u{1F1F7}x")
+
+        #expect(t.getCharacter(col: 0, row: 0) == "🇫🇷")
+        #expect(t.getCharData(col: 0, row: 0)?.width == 2)
+        // Padding cell
+        #expect(t.getCharData(col: 1, row: 0)?.width == 0)
+        // x after the 2-cell flag
+        #expect(t.getCharacter(col: 2, row: 0) == "x")
+    }
+
+    /// Cursor position after flag emoji matches what programs using wcwidth() expect.
+    @Test func testFlagEmojiCursorPosition() {
+        let h = HeadlessTerminal(queue: SwiftTermTests.queue) { _ in }
+        let t = h.terminal!
+
+        // "A" + 🇩🇪 + "B": cursor should be at col 4 (1+2+1)
+        t.feed(text: "A\u{1F1E9}\u{1F1EA}B")
+        #expect(t.buffer.x == 4)
+        #expect(t.getCharacter(col: 0, row: 0) == "A")
+        #expect(t.getCharacter(col: 1, row: 0) == "🇩🇪")
+        #expect(t.getCharacter(col: 3, row: 0) == "B")
+    }
+
+    /// RI overwrite: writing an RI at the same position as an existing standalone RI
+    /// should replace it, not combine (adjacency guard).
+    @Test func testRIOverwriteDoesNotCombine() {
+        let h = HeadlessTerminal(queue: SwiftTermTests.queue) { _ in }
+        let t = h.terminal!
+
+        // Place F at col 5
+        t.feed(text: "     \u{1F1EB}")
+        #expect(t.getCharacter(col: 5, row: 0) == "\u{1F1EB}")
+        #expect(t.getCharData(col: 5, row: 0)?.width == 1)
+
+        // Move cursor back to col 5 and write another RI (D).
+        // This should overwrite, not combine with the existing F.
+        t.feed(text: "\u{1b}[1;6H\u{1F1E9}")  // CUP(1,6) = row 0, col 5
+        #expect(t.getCharacter(col: 5, row: 0) == "\u{1F1E9}")
+        #expect(t.getCharData(col: 5, row: 0)?.width == 1)
+    }
+
+    /// Simulates tmux partial repaint: RIs from two flags on different lines arrive
+    /// with interleaved cursor positioning. Each flag should combine correctly.
+    @Test func testFlagCombiningWithCursorRepositioning() {
+        let h = HeadlessTerminal(queue: SwiftTermTests.queue) { _ in }
+        let t = h.terminal!
+
+        // Line 0: place 🇫🇷 (F then R)
+        t.feed(text: "\u{1F1EB}\u{1F1F7}")
+        #expect(t.getCharacter(col: 0, row: 0) == "🇫🇷")
+
+        // Move to line 1, place 🇩🇪 (D then E)
+        t.feed(text: "\r\n\u{1F1E9}\u{1F1EA}")
+        #expect(t.getCharacter(col: 0, row: 1) == "🇩🇪")
+
+        // Move back to line 0 col 0, repaint 🇫🇷
+        t.feed(text: "\u{1b}[1;1H\u{1F1EB}\u{1F1F7}")
+        #expect(t.getCharacter(col: 0, row: 0) == "🇫🇷")
+        #expect(t.getCharData(col: 0, row: 0)?.width == 2)
     }
 
     /// Test keycap emoji sequences (digit + VS16 + combining enclosing keycap)
