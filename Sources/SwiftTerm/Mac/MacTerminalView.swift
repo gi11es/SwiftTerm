@@ -121,7 +121,9 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
     /// Terminal multiplexers deliver screen repaints as multiple BSU/ESU
     /// pairs across separate I/O callbacks. This window lets the full
     /// sequence arrive before rendering one atomic frame.
-    var syncSequenceSettleMs: Int = 100
+    /// Note: tmux handles DEC 2026 internally, so this only affects
+    /// applications that send BSU/ESU directly (e.g. Claude Code).
+    public var syncSequenceSettleMs: Int = 100
 #if canImport(MetalKit)
     var metalView: MTKView?
     var metalRenderer: MetalTerminalRenderer?
