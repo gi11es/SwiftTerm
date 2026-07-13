@@ -41,6 +41,18 @@ public protocol LocalProcessTerminalViewDelegate: AnyObject {
      * - Parameter exitCode: the exit code returned by the process, or nil if this was an error caused during the IO reading/writing
      */
     func processTerminated (source: TerminalView, exitCode: Int32?)
+
+    /**
+     * This method is invoked when a write to the child process failed and the
+     * unwritten input was dropped. Default implementation does nothing.
+     * - Parameter source: the sending instance
+     * - Parameter errno: the errno reported by the failed write
+     */
+    func writeFailed (source: LocalProcessTerminalView, errno: Int32)
+}
+
+public extension LocalProcessTerminalViewDelegate {
+    func writeFailed (source: LocalProcessTerminalView, errno: Int32) {}
 }
 
 /**
@@ -131,6 +143,17 @@ open class LocalProcessTerminalView: TerminalView, TerminalViewDelegate, LocalPr
     open func send(source: TerminalView, data: ArraySlice<UInt8>)
     {
         process.send (data: data)
+    }
+
+    /**
+     * Invoked when a write to the child process failed; forwards to the
+     * `processDelegate`. Declared on the class (not just the protocol
+     * extension) so it is the conformance witness and subclasses can
+     * override it.
+     */
+    open func writeFailed(_ source: LocalProcess, errno: Int32)
+    {
+        processDelegate?.writeFailed (source: self, errno: errno)
     }
     
     /**

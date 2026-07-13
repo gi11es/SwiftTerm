@@ -28,7 +28,10 @@ public protocol LocalProcessDelegate: AnyObject {
     /// This method should return the window size to report to the local process.
     func getWindowSize () -> winsize
 
-    /// This method is invoked when a write to the child process fails.
+    /// This method is invoked when a write to the child process fails. The
+    /// unwritten bytes are dropped — there is no retry — so hosts should
+    /// treat this as lost input (e.g. surface an error or mark the session
+    /// broken). Not invoked for writes cancelled by `terminate()`.
     /// Default implementation does nothing.
     /// - Parameter source: the local process whose write failed
     /// - Parameter errno: the errno reported by the failed write
@@ -201,7 +204,9 @@ public class LocalProcess {
             // recovered if it wedges, and its failures were only ever
             // printed to stdout. Surface write errors to the delegate so
             // hosts can react instead of silently losing keystrokes.
-            io.write(offset: 0, data: ddata, queue: DispatchQueue.global(qos: .userInitiated), ioHandler: { [weak self] done, _, errno in
+            // Handler runs on readQueue (serial) so the `total` bookkeeping
+            // is not racy across concurrent completions.
+            io.write(offset: 0, data: ddata, queue: readQueue, ioHandler: { [weak self] done, _, errno in
                 guard let self, done else { return }
                 self.total += copyCount
                 if self.debugIO {
@@ -210,6 +215,10 @@ public class LocalProcess {
                 if errno != 0 {
                     print ("Error writing data to the child, errno=\(errno)")
                     self.dispatchQueue.async {
+                        // Writes cancelled by terminate() (io.close after
+                        // childStopped) fail with ECANCELED — that is an
+                        // intentional shutdown, not lost input.
+                        guard self.running else { return }
                         self.delegate?.writeFailed(self, errno: errno)
                     }
                 }

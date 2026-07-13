@@ -41,7 +41,8 @@ final class LocalProcessSendTests: XCTestCase {
     func testSendRoundTripsThroughPty() {
         let marker = "swiftterm-send-\(UInt32.random(in: 0..<UInt32.max))"
         let delegate = Delegate(marker: marker)
-        let process = LocalProcess(delegate: delegate, dispatchQueue: DispatchQueue(label: "test"))
+        let queue = DispatchQueue(label: "test")
+        let process = LocalProcess(delegate: delegate, dispatchQueue: queue)
         process.startProcess(executable: "/bin/cat", args: [], environment: ["TERM=xterm"])
         XCTAssertTrue(process.running)
 
@@ -49,6 +50,9 @@ final class LocalProcessSendTests: XCTestCase {
         process.send(data: payload[...])
 
         wait(for: [delegate.received], timeout: 5.0)
+        // Drain the delegate queue so writeErrors reads are ordered after
+        // any pending writeFailed deliveries.
+        queue.sync {}
         XCTAssertTrue(delegate.writeErrors.isEmpty)
         process.terminate()
     }
@@ -60,9 +64,12 @@ final class LocalProcessSendTests: XCTestCase {
         process.terminate()
         XCTAssertFalse(process.running)
 
-        // Must not crash or invoke the write path once stopped.
+        // Must not crash, and must not even enter the write path once
+        // stopped — sendCount is only incremented past the guard.
+        let countBefore = process.sendCount
         let payload = Array("dropped\n".utf8)
         process.send(data: payload[...])
+        XCTAssertEqual(process.sendCount, countBefore)
     }
 }
 #endif
