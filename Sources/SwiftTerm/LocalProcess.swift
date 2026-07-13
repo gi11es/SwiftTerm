@@ -27,6 +27,16 @@ public protocol LocalProcessDelegate: AnyObject {
 
     /// This method should return the window size to report to the local process.
     func getWindowSize () -> winsize
+
+    /// This method is invoked when a write to the child process fails.
+    /// Default implementation does nothing.
+    /// - Parameter source: the local process whose write failed
+    /// - Parameter errno: the errno reported by the failed write
+    func writeFailed (_ source: LocalProcess, errno: Int32)
+}
+
+public extension LocalProcessDelegate {
+    func writeFailed (_ source: LocalProcess, errno: Int32) {}
 }
 
 /**
@@ -172,7 +182,7 @@ public class LocalProcess {
      */
     public func send (data: ArraySlice<UInt8>)
     {
-        guard running else {
+        guard running, let io else {
             return
         }
         let copy = sendCount
@@ -184,13 +194,24 @@ public class LocalProcess {
                 print ("[SEND-\(copy)] Queuing data to client: \(data) ")
             }
 
-            DispatchIO.write(toFileDescriptor: childfd, data: ddata, runningHandlerOn: DispatchQueue.global(qos: .userInitiated), handler:  { dd, errno in
+            // Write on the persistent DispatchIO channel (shared with the
+            // read loop) rather than the one-shot convenience API: the
+            // fire-and-forget DispatchIO.write(toFileDescriptor:) funnels
+            // through hidden per-fd state that cannot be observed or
+            // recovered if it wedges, and its failures were only ever
+            // printed to stdout. Surface write errors to the delegate so
+            // hosts can react instead of silently losing keystrokes.
+            io.write(offset: 0, data: ddata, queue: DispatchQueue.global(qos: .userInitiated), ioHandler: { [weak self] done, _, errno in
+                guard let self, done else { return }
                 self.total += copyCount
                 if self.debugIO {
                     print ("[SEND-\(copy)] completed bytes=\(self.total)")
                 }
                 if errno != 0 {
                     print ("Error writing data to the child, errno=\(errno)")
+                    self.dispatchQueue.async {
+                        self.delegate?.writeFailed(self, errno: errno)
+                    }
                 }
             })
         }
