@@ -17,16 +17,24 @@ public class HeadlessTerminal : TerminalDelegate, LocalProcessDelegate {
     public var process: LocalProcess!
     var onEnd: (_ exitCode: Int32?) -> ()
     var dir: String?
-    
+
+    /// Invoked when a write to the child process failed and the unwritten
+    /// input was dropped; receives the errno of the failed write.
+    public var onWriteFailed: ((Int32) -> ())?
+
     public init (queue: DispatchQueue? = nil, options: TerminalOptions = TerminalOptions.default, onEnd: @escaping (_ exitCode: Int32?) -> ())
     {
         self.onEnd = onEnd
         terminal = Terminal(delegate: self, options: options)
         process = LocalProcess(delegate: self, dispatchQueue: queue)
     }
-    
+
     public func processTerminated(_ source: LocalProcess, exitCode: Int32?) {
         onEnd (exitCode)
+    }
+
+    public func writeFailed(_ source: LocalProcess, errno: Int32) {
+        onWriteFailed? (errno)
     }
     
     public func dataReceived(slice: ArraySlice<UInt8>) {
