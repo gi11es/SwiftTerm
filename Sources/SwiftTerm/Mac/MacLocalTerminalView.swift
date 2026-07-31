@@ -49,10 +49,20 @@ public protocol LocalProcessTerminalViewDelegate: AnyObject {
      * - Parameter errno: the errno reported by the failed write
      */
     func writeFailed (source: LocalProcessTerminalView, errno: Int32)
+
+    /**
+     * This method is invoked when reading from the child has been abandoned after
+     * repeated failures — the terminal will receive no further output and would
+     * otherwise silently freeze on its last frame. Default implementation does nothing.
+     * - Parameter source: the sending instance
+     * - Parameter errno: the errno reported by the last failed read
+     */
+    func readFailed (source: LocalProcessTerminalView, errno: Int32)
 }
 
 public extension LocalProcessTerminalViewDelegate {
     func writeFailed (source: LocalProcessTerminalView, errno: Int32) {}
+    func readFailed (source: LocalProcessTerminalView, errno: Int32) {}
 }
 
 /**
@@ -154,6 +164,16 @@ open class LocalProcessTerminalView: TerminalView, TerminalViewDelegate, LocalPr
     open func writeFailed(_ source: LocalProcess, errno: Int32)
     {
         processDelegate?.writeFailed (source: self, errno: errno)
+    }
+
+    /**
+     * Invoked when the read chain from the child was abandoned; forwards to the
+     * `processDelegate`. Declared on the class so it is the conformance witness
+     * and subclasses can override it.
+     */
+    open func readFailed(_ source: LocalProcess, errno: Int32)
+    {
+        processDelegate?.readFailed (source: self, errno: errno)
     }
     
     /**

@@ -36,10 +36,19 @@ public protocol LocalProcessDelegate: AnyObject {
     /// - Parameter source: the local process whose write failed
     /// - Parameter errno: the errno reported by the failed write
     func writeFailed (_ source: LocalProcess, errno: Int32)
+
+    /// This method is invoked when reading from the child has been abandoned
+    /// after repeated failures. The terminal will receive no further output
+    /// from this process, so hosts should surface this (the alternative is a
+    /// silently frozen view). Default implementation does nothing.
+    /// - Parameter source: the local process whose read chain ended
+    /// - Parameter errno: the errno reported by the last failed read
+    func readFailed (_ source: LocalProcess, errno: Int32)
 }
 
 public extension LocalProcessDelegate {
     func writeFailed (_ source: LocalProcess, errno: Int32) {}
+    func readFailed (_ source: LocalProcess, errno: Int32) {}
 }
 
 /**
@@ -265,14 +274,46 @@ public class LocalProcess {
 
     /* Total number of bytes read */
     var totalRead = 0
+    /// Whether a read that produced no data should re-arm the read chain.
+    ///
+    /// DispatchIO reports a *failed* read operation with `done == true` and no
+    /// data. Treating that as the end of the chain leaves the terminal
+    /// permanently blind: the fd stays valid, the process keeps running and
+    /// writes keep succeeding, but no child output is ever read again — the
+    /// view silently freezes on its last frame forever.
+    ///
+    /// So re-arm whether or not the operation is `done`, and stop only when
+    /// the process is gone, the descriptor is closed, or the same error keeps
+    /// repeating (which would otherwise spin).
+    static func shouldRearmRead (running: Bool, childfd: Int32, consecutiveErrors: Int, maxErrors: Int) -> Bool {
+        guard running, childfd != -1 else { return false }
+        return consecutiveErrors <= maxErrors
+    }
+
+    /// Consecutive no-data reads, to avoid spinning on a permanently dead channel.
+    var consecutiveReadErrors = 0
+    let maxConsecutiveReadErrors = 8
+
     func childProcessRead (done: Bool, data: DispatchData?, errno: Int32) {
         guard let data else {
-            // Re-schedule the read on transient errors to keep the chain alive
-            if !done, running {
-                io?.read(offset: 0, length: readSize, queue: readQueue, ioHandler: childProcessRead)
+            consecutiveReadErrors += 1
+            guard Self.shouldRearmRead(running: running,
+                                       childfd: childfd,
+                                       consecutiveErrors: consecutiveReadErrors,
+                                       maxErrors: maxConsecutiveReadErrors) else {
+                if running, childfd != -1 {
+                    print ("Read chain abandoned after \(consecutiveReadErrors) failed reads, errno=\(errno)")
+                    dispatchQueue.async { [weak self] in
+                        guard let self else { return }
+                        self.delegate?.readFailed(self, errno: errno)
+                    }
+                }
+                return
             }
+            io?.read(offset: 0, length: readSize, queue: readQueue, ioHandler: childProcessRead)
             return
         }
+        consecutiveReadErrors = 0
         if debugIO {
             totalRead += data.count
             print ("[READ] count=\(data.count) received from host total=\(totalRead)")
