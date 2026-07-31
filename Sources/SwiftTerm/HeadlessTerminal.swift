@@ -22,6 +22,10 @@ public class HeadlessTerminal : TerminalDelegate, LocalProcessDelegate {
     /// input was dropped; receives the errno of the failed write.
     public var onWriteFailed: ((Int32) -> ())?
 
+    /// Invoked when reading from the child was abandoned after repeated
+    /// failures; receives the errno of the last failed read.
+    public var onReadFailed: ((Int32) -> ())?
+
     public init (queue: DispatchQueue? = nil, options: TerminalOptions = TerminalOptions.default, onEnd: @escaping (_ exitCode: Int32?) -> ())
     {
         self.onEnd = onEnd
@@ -35,6 +39,10 @@ public class HeadlessTerminal : TerminalDelegate, LocalProcessDelegate {
 
     public func writeFailed(_ source: LocalProcess, errno: Int32) {
         onWriteFailed? (errno)
+    }
+
+    public func readFailed(_ source: LocalProcess, errno: Int32) {
+        onReadFailed? (errno)
     }
     
     public func dataReceived(slice: ArraySlice<UInt8>) {
